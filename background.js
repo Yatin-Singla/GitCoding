@@ -4,20 +4,47 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   }
 });
 
+async function refreshInstallationToken(installationId) {
+  const { githubToken } = await chrome.storage.local.get('githubToken');
+  
+  const response = await fetch(`https://api.github.com/app/installations/${installationId}/access_tokens`, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${githubToken}`,
+      'Accept': 'application/vnd.github.v3+json'
+    }
+  });
+
+  if (!response.ok) {
+    throw new Error('Failed to refresh token');
+  }
+
+  const data = await response.json();
+  await chrome.storage.local.set({ githubToken: data.token });
+  return data.token;
+}
+
 async function handleGitHubSubmission({ title, code }) {
   try {
-    const { githubToken } = await chrome.storage.local.get('githubToken');
-    if (!githubToken) {
+    const { githubToken, installationId } = await chrome.storage.local.get(['githubToken', 'installationId']);
+    if (!githubToken || !installationId) {
       throw new Error('Not authenticated with GitHub');
     }
 
-    // Create repo if it doesn't exist
-    const repoName = 'leetcode-solutions';
-    await createRepoIfNotExists(githubToken, repoName);
+    // Try to use existing token, if it fails, refresh it
+    try {
+      await createRepoIfNotExists(githubToken, 'leetcode-solutions');
+    } catch (error) {
+      if (error.status === 401) {
+        const newToken = await refreshInstallationToken(installationId);
+        await createRepoIfNotExists(newToken, 'leetcode-solutions');
+      } else {
+        throw error;
+      }
+    }
 
-    // Create file in repo
     const fileName = `${title.toLowerCase().replace(/\s+/g, '-')}.js`;
-    await createFileInRepo(githubToken, repoName, fileName, code, title);
+    await createFileInRepo(githubToken, 'leetcode-solutions', fileName, code, title);
   } catch (error) {
     console.error('Failed to submit to GitHub:', error);
   }
