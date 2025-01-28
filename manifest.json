@@ -1,8 +1,22 @@
 {
   "manifest_version": 3,
-  "name": "LeetCode to GitHub",
+  "name": "GitCoding",
   "version": "1.0",
-  "description": "Automatically saves LeetCode solutions to GitHub",
+  "description": "Automatically saves your LeetCode solutions to GitHub, creating a personal repository of all your solved problems.",
+  "key": "iehacfagnnclpijplhmaphjhcikioeop",
+  "icons": {
+    "16": "icons/icon-16.png",
+    "48": "icons/icon-48.png",
+    "128": "icons/icon-128.png"
+  },
+  "action": {
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16": "icons/icon-16.png",
+      "48": "icons/icon-48.png",
+      "128": "icons/icon-128.png"
+    }
+  },
   "permissions": [
     "activeTab",
     "storage",
@@ -11,18 +25,22 @@
   "host_permissions": [
     "https://leetcode.com/*",
     "https://github.com/*",
-    "https://api.github.com/*"
+    "https://api.github.com/*",
+    "https://*.chromiumapp.org/*"
   ],
-  "action": {
-    "default_popup": "popup.html"
-  },
   "background": {
-    "service_worker": "background.js"
+    "service_worker": "background.js",
+    "type": "module"
   },
   "content_scripts": [
     {
       "matches": ["https://leetcode.com/*"],
-      "js": ["content.js"]
+      "js": ["content.js"],
+      "type": "module"
     }
-  ]
+  ],
+  "web_accessible_resources": [{
+    "resources": ["config.js"],
+    "matches": ["<all_urls>"]
+  }]
 } 

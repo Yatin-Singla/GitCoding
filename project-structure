@@ -1,4 +1,13 @@
-leetcode-to-github/
+gitcoding/
+├── icons/
+│   ├── icon-16.png
+│   ├── icon-48.png
+│   ├── icon-128.png
+│   ├── logo.png
+│   └── logo.svg
+├── .env
+├── .gitignore
+├── config.js
 ├── manifest.json
 ├── background.js
 ├── content.js

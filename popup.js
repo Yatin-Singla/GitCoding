@@ -1,5 +1,6 @@
-const APP_ID = 'YOUR_GITHUB_APP_ID';
-const CLIENT_ID = 'YOUR_GITHUB_APP_CLIENT_ID';
+import config from './config.js';
+
+const CLIENT_ID = config.clientId;
 
 document.addEventListener('DOMContentLoaded', () => {
   const loginButton = document.getElementById('github-login');
@@ -18,63 +19,44 @@ document.addEventListener('DOMContentLoaded', () => {
 
   loginButton.addEventListener('click', async () => {
     try {
-      // Start device flow with GitHub App
-      const deviceCodeResponse = await fetch('https://github.com/login/device/code', {
-        method: 'POST',
-        headers: {
-          'Accept': 'application/json',
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          client_id: CLIENT_ID,
-          scope: 'repo' // You can be more specific with permissions
-        })
+      const authUrl = `https://github.com/login/oauth/authorize?client_id=${CLIENT_ID}&scope=repo&redirect_uri=${encodeURIComponent('https://iehacfagnnclpijplhmaphjhcikioeop.chromiumapp.org/')}`;
+      
+      console.log('Launching auth flow with URL:', authUrl);
+      
+      const responseUrl = await chrome.identity.launchWebAuthFlow({
+        url: authUrl,
+        interactive: true
       });
 
-      const deviceData = await deviceCodeResponse.json();
-      
-      statusDiv.innerHTML = `
-        <p>Please visit: <a href="${deviceData.verification_uri}" target="_blank">${deviceData.verification_uri}</a></p>
-        <p>And enter code: <strong>${deviceData.user_code}</strong></p>
-        <p>Waiting for authentication...</p>
-      `;
+      console.log('Received response URL:', responseUrl);
 
-      const token = await pollForToken(deviceData.device_code, deviceData.interval);
+      const code = new URL(responseUrl).searchParams.get('code');
+      if (!code) {
+        throw new Error('No authorization code received');
+      }
       
-      // Get installation ID for the authenticated user
-      const installations = await fetch('https://api.github.com/user/installations', {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Accept': 'application/vnd.github.v3+json'
-        }
-      }).then(res => res.json());
+      // Exchange code for token using background service
+      const tokenData = await chrome.runtime.sendMessage({
+        type: 'EXCHANGE_CODE_FOR_TOKEN',
+        code: code
+      });
 
-      const installationId = installations.installations[0]?.id;
-      
-      if (!installationId) {
-        throw new Error('Please install the GitHub App first');
+      if (tokenData.error) {
+        throw new Error(tokenData.error);
       }
 
-      // Get installation token
-      const installationToken = await fetch(`https://api.github.com/app/installations/${installationId}/access_tokens`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Accept': 'application/vnd.github.v3+json'
-        }
-      }).then(res => res.json());
-
-      const username = await getUserInfo(installationToken.token);
+      const token = tokenData.access_token;
+      const username = await getUserInfo(token);
       
       chrome.storage.local.set({ 
-        githubToken: installationToken.token,
-        username: username,
-        installationId: installationId
+        githubToken: token,
+        username: username
       });
       
       showLoggedInState(username);
       statusDiv.innerHTML = '<p class="success">Successfully logged in!</p>';
     } catch (error) {
+      console.error('Authentication error:', error);
       statusDiv.innerHTML = `<p class="error">Authentication failed: ${error.message}</p>`;
     }
   });
@@ -85,41 +67,6 @@ document.addEventListener('DOMContentLoaded', () => {
       statusDiv.innerHTML = '<p>Logged out successfully</p>';
     });
   });
-
-  async function pollForToken(deviceCode, interval) {
-    const pollInterval = (interval || 5) * 1000; // Convert to milliseconds
-
-    while (true) {
-      await new Promise(resolve => setTimeout(resolve, pollInterval));
-
-      const response = await fetch('https://github.com/login/oauth/access_token', {
-        method: 'POST',
-        headers: {
-          'Accept': 'application/json',
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          client_id: CLIENT_ID,
-          device_code: deviceCode,
-          grant_type: 'urn:ietf:params:oauth:grant-type:device_code'
-        })
-      });
-
-      const data = await response.json();
-      
-      if (data.error === 'authorization_pending') {
-        continue;
-      }
-
-      if (data.error) {
-        throw new Error(data.error_description || data.error);
-      }
-
-      if (data.access_token) {
-        return data.access_token;
-      }
-    }
-  }
 
   function showLoggedInState(username) {
     loginSection.style.display = 'none';

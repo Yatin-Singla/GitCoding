@@ -1,3 +1,5 @@
+import config from './config.js';
+
 // Listen for successful submission
 const observer = new MutationObserver((mutations) => {
   mutations.forEach((mutation) => {

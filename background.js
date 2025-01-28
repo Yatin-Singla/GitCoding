@@ -1,8 +1,35 @@
+import config from './config.js';
+
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.type === 'SUBMIT_TO_GITHUB') {
     handleGitHubSubmission(message.payload);
   }
+  if (message.type === 'EXCHANGE_CODE_FOR_TOKEN') {
+    exchangeCodeForToken(message.code)
+      .then(sendResponse)
+      .catch(error => sendResponse({ error: error.message }));
+    return true; // Required for async response
+  }
 });
+
+async function handleGitHubSubmission({ title, code }) {
+  try {
+    const { githubToken } = await chrome.storage.local.get('githubToken');
+    if (!githubToken) {
+      throw new Error('Not authenticated with GitHub');
+    }
+
+    // Create repo if it doesn't exist
+    const repoName = 'leetcode-solutions';
+    await createRepoIfNotExists(githubToken, repoName);
+
+    // Create file in repo
+    const fileName = `${title.toLowerCase().replace(/\s+/g, '-')}.js`;
+    await createFileInRepo(githubToken, repoName, fileName, code, title);
+  } catch (error) {
+    console.error('Failed to submit to GitHub:', error);
+  }
+}
 
 async function refreshInstallationToken(installationId) {
   const { githubToken } = await chrome.storage.local.get('githubToken');
@@ -22,32 +49,6 @@ async function refreshInstallationToken(installationId) {
   const data = await response.json();
   await chrome.storage.local.set({ githubToken: data.token });
   return data.token;
-}
-
-async function handleGitHubSubmission({ title, code }) {
-  try {
-    const { githubToken, installationId } = await chrome.storage.local.get(['githubToken', 'installationId']);
-    if (!githubToken || !installationId) {
-      throw new Error('Not authenticated with GitHub');
-    }
-
-    // Try to use existing token, if it fails, refresh it
-    try {
-      await createRepoIfNotExists(githubToken, 'leetcode-solutions');
-    } catch (error) {
-      if (error.status === 401) {
-        const newToken = await refreshInstallationToken(installationId);
-        await createRepoIfNotExists(newToken, 'leetcode-solutions');
-      } else {
-        throw error;
-      }
-    }
-
-    const fileName = `${title.toLowerCase().replace(/\s+/g, '-')}.js`;
-    await createFileInRepo(githubToken, 'leetcode-solutions', fileName, code, title);
-  } catch (error) {
-    console.error('Failed to submit to GitHub:', error);
-  }
 }
 
 async function createRepoIfNotExists(token, repoName) {
@@ -87,4 +88,25 @@ async function createFileInRepo(token, repoName, fileName, content, commitMessag
   if (!response.ok) {
     throw new Error('Failed to create file');
   }
+}
+
+async function exchangeCodeForToken(code) {
+  const tokenResponse = await fetch('https://github.com/login/oauth/access_token', {
+    method: 'POST',
+    headers: {
+      'Accept': 'application/json',
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      client_id: config.clientId,
+      client_secret: config.clientSecret,
+      code: code
+    })
+  });
+
+  const data = await tokenResponse.json();
+  if (data.error) {
+    throw new Error(data.error_description || data.error);
+  }
+  return data;
 } 
